@@ -50,7 +50,7 @@ def _image_compression(format_: str, image_path: Path) -> Path:
             cv2_image = (bgr * alpha + 255 * (1 - alpha)).astype(np.uint8)
 
         compression_params = [cv2.IMWRITE_JPEG_QUALITY, 75]
-        output_dir = Path("./output")
+        output_dir = Path("./outputs")
         output_dir.mkdir(exist_ok=True)
 
         temp_path = output_dir / f"temp_compression.{format_}"
