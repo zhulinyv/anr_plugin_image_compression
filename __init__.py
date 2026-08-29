@@ -26,6 +26,7 @@ def register(plugin: Plugin):
             Action(
                 id="compress",
                 label="🗜️ 仅压缩",
+                uses_novelai=False,
                 inputs=["image_format", "image_path", "image"],
                 # 返回 {message, images}: 前端在输出区直接展示压缩后的图片
                 handler=lambda v: image_compression(v.get("image_format", "png"), [v.get("image"), v.get("image_path")]),
@@ -33,6 +34,7 @@ def register(plugin: Plugin):
             Action(
                 id="organize",
                 label="📂 仅整理",
+                uses_novelai=False,
                 inputs=["image_format", "image_path", "image"],
                 # 返回 {message, dir}: 前端在输出区显示完成消息 + 打开保存目录按钮
                 handler=lambda v: image_organization(v.get("image_format", "png"), [v.get("image"), v.get("image_path")], False),
@@ -40,6 +42,7 @@ def register(plugin: Plugin):
             Action(
                 id="compress_organize",
                 label="🗜️📂 压缩并整理",
+                uses_novelai=False,
                 inputs=["image_format", "image_path", "image"],
                 handler=lambda v: image_organization(v.get("image_format", "png"), [v.get("image"), v.get("image_path")], True),
             ),
