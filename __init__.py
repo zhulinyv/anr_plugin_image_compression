@@ -41,7 +41,7 @@ def register(plugin: Plugin):
             ),
             Action(
                 id="compress_organize",
-                label="🗜️📂 压缩并整理",
+                label="📦 压缩并整理",
                 uses_novelai=False,
                 inputs=["image_format", "image_path", "image"],
                 handler=lambda v: image_organization(v.get("image_format", "png"), [v.get("image"), v.get("image_path")], True),
