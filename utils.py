@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 
@@ -9,18 +10,22 @@ from openpyxl.drawing.image import Image as OPXIMG
 from openpyxl.styles import Alignment
 from PIL import Image as PILIMG
 
+from utils.images import list_images
 from utils.image_tools import get_image_information, revert_image_info
 from utils.logger import logger
 
 
+# 压缩面板支持的格式 (比 utils.images.IMAGE_EXTS 窄: 只处理这几种有损/无损编码)
+COMPRESS_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
 def get_image_paths(directory: str | Path) -> list[Path]:
-    valid_exts = {".png", ".jpg", ".jpeg", ".webp"}
-    return [p for p in Path(directory).iterdir() if p.is_file() and p.suffix.lower() in valid_exts]
+    """列出目录内可压缩的图片 (统一走 utils.images, 扩展名与自然排序全项目一致)。"""
+    return [Path(p) for p in list_images(directory, exts=COMPRESS_EXTS)]
 
 
 def resolve_images(path: str | Path | list) -> list[Path]:
     """目录 -> 目录内全部图片; 单张图片文件 -> 该文件; 传入列表时先处理文件再处理目录。"""
-    valid_exts = {".png", ".jpg", ".jpeg", ".webp"}
     paths = path if isinstance(path, (list, tuple)) else [path]
     images: list[Path] = []
     for item in paths:
@@ -28,7 +33,7 @@ def resolve_images(path: str | Path | list) -> list[Path]:
             continue
         p = Path(item)
         if p.is_file():
-            if p.suffix.lower() in valid_exts:
+            if p.suffix.lower() in COMPRESS_EXTS:
                 images.append(p)
         elif p.is_dir():
             images.extend(get_image_paths(p))
@@ -36,7 +41,8 @@ def resolve_images(path: str | Path | list) -> list[Path]:
     seen = set()
     result: list[Path] = []
     for img in images:
-        key = str(img.resolve()) if img.exists() else str(img)
+        # normcase+abspath 与 resolve() 的去重效果一致, 但不做 realpath 解析 (少一次系统调用/文件)
+        key = os.path.normcase(os.path.abspath(img))
         if key not in seen:
             seen.add(key)
             result.append(img)
@@ -65,9 +71,9 @@ def return_pnginfo(image: PILIMG.Image) -> dict:
 
 
 def _image_compression(format_: str, image_path: Path) -> Path:
-    cv2_image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-
     if format_ == "jpg":
+        # cv2 只在 jpg 分支用: 原先无条件先读一遍, 导致 png/webp 分支又用 PIL 读第二遍
+        cv2_image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
         # 利用 numpy 广播机制高效处理 Alpha 通道 (透明背景转纯白)
         if cv2_image.shape[2] == 4:
             alpha = cv2_image[:, :, 3:] / 255.0  # 保持三维以便广播
@@ -85,11 +91,8 @@ def _image_compression(format_: str, image_path: Path) -> Path:
     elif format_ == "png":
         # compression_params = [cv2.IMWRITE_PNG_COMPRESSION, 9]
         with PILIMG.open(image_path) as img:
-            if img.mode == 'RGBA':
-                alpha = img.getchannel('A')
-                img_p = img.convert('P', palette=PILIMG.ADAPTIVE, colors=256)
-            else:
-                img_p = img.convert('P', palette=PILIMG.ADAPTIVE, colors=256)
+            # 两个分支本来就完全一致 (原 if/else 是同一行代码), 直接转换即可
+            img_p = img.convert('P', palette=PILIMG.ADAPTIVE, colors=256)
 
             new_path = image_path.with_name(f"{image_path.stem}_compression.png")
 
