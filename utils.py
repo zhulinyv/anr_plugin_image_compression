@@ -13,6 +13,7 @@ from PIL import Image as PILIMG
 from utils.images import list_images
 from utils.image_tools import get_image_information, revert_image_info
 from utils.logger import logger
+from utils.paths import job_temp_path
 
 
 # 压缩面板支持的格式 (比 utils.images.IMAGE_EXTS 窄: 只处理这几种有损/无损编码)
@@ -74,17 +75,24 @@ def _image_compression(format_: str, image_path: Path) -> Path:
     if format_ == "jpg":
         # cv2 只在 jpg 分支用: 原先无条件先读一遍, 导致 png/webp 分支又用 PIL 读第二遍
         cv2_image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-        # 利用 numpy 广播机制高效处理 Alpha 通道 (透明背景转纯白)
-        if cv2_image.shape[2] == 4:
+        # IMREAD_UNCHANGED 的维度随源文件而定, 三种情况都要处理:
+        #   2 维 = 灰度图 (没有 shape[2], 原代码直接 IndexError)
+        #   3 维 3 通道 = BGR
+        #   3 维 4 通道 = BGRA, 需要把 alpha 混合成白底 (JPG 不支持透明)
+        if cv2_image is None:
+            raise ValueError(f"无法读取图片 (文件损坏或格式不支持): {image_path.name}")
+        if cv2_image.ndim == 2:
+            cv2_image = cv2.cvtColor(cv2_image, cv2.COLOR_GRAY2BGR)
+        elif cv2_image.shape[2] == 4:
+            # 利用 numpy 广播机制高效处理 Alpha 通道 (透明背景转纯白)
             alpha = cv2_image[:, :, 3:] / 255.0  # 保持三维以便广播
             bgr = cv2_image[:, :, :3]
             cv2_image = (bgr * alpha + 255 * (1 - alpha)).astype(np.uint8)
 
         compression_params = [cv2.IMWRITE_JPEG_QUALITY, 75]
-        output_dir = Path("./outputs")
-        output_dir.mkdir(exist_ok=True)
-
-        temp_path = output_dir / f"temp_compression.{format_}"
+        # cv2 只能按扩展名推断编码格式, 所以需要一个带 .jpg 后缀的中间文件;
+        # 放 data/temp (按任务隔离), 不要落在 outputs/ 里被当成用户图片。
+        temp_path = job_temp_path(f"compression.{format_}")
         cv2.imwrite(str(temp_path), cv2_image, compression_params)
         new_path = image_path.with_name(f"{image_path.stem}_compression.{format_}")
         shutil.move(str(temp_path), str(new_path))
